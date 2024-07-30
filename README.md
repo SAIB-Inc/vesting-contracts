@@ -1,4 +1,4 @@
-# 🔒 Vesting Contract for Coinecta Platform
+# 🔒 Vesting Contract
 
 Welcome to the Vesting Contract repository for the Coinecta platform! This smart contract implements advanced vesting mechanisms with [Merkle Patricia Forestry](https://github.com/aiken-lang/merkle-patricia-forestry) for secure and flexible asset management.
 
