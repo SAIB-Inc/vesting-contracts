@@ -1,5 +1,6 @@
 use aiken/cbor
 use aiken/dict
+use aiken/list
 use aiken/merkle_patricia_forestry.{MerklePatriciaForestry, Proof} as mpf
 use aiken/transaction.{
   Datum, InlineDatum, Input, Output, OutputReference, ScriptContext, Transaction,
@@ -27,6 +28,15 @@ pub fn claim(
   expect [treasury_output] =
     find_script_outputs(tx.outputs, treasury_script_hash)
 
+  let vesting_outputs =
+    find_script_outputs(tx.outputs, claim_entry.vesting_program)
+
+  let vesting_output_value =
+    when vesting_outputs is {
+      [output] -> output.value
+      _ -> value.zero()
+    }
+
   let current_treasury_datum = extract_treasury_datum(treasury_input.datum)
 
   let updated_root_hash =
@@ -45,15 +55,25 @@ pub fn claim(
 
   let spent_treasury_datum = extract_treasury_datum(treasury_output.datum)
 
+  let is_minting_valid = or {
+      vesting_output_value == value.zero(),
+      verify_vesting_mint(claim_entry.vesting_program, tx.mint),
+    }
+
   and {
     treasury_input.address == treasury_output.address,
-    verify_claim_value(claim_entry, treasury_input.value, treasury_output.value),
-    verify_claim_datum(
+    verify_vesting_value(claim_entry, vesting_output_value),
+    verify_treasury_value(
+      claim_entry,
+      treasury_input.value,
+      treasury_output.value,
+    ),
+    verify_treasury_datum(
       updated_treasury_datum,
       spent_treasury_datum,
       updated_root_hash,
     ),
-    verify_vesting_mint(claim_entry.vesting_program, tx.mint),
+    is_minting_valid,
     satisfied(
       claim_entry.claimant,
       tx.extra_signatories,
@@ -90,13 +110,46 @@ pub fn calculate_claimed_trie(
       )
 }
 
+pub fn verify_vesting_value(
+  claim_entry: ClaimEntry,
+  vesting_output_value: Value,
+) -> Bool {
+  let vesting_value = claim_entry.vesting_value
+
+  if vesting_value == value.zero() {
+    True
+  } else {
+    let vesting_mints =
+      vesting_output_value
+        |> value.flatten()
+        |> list.filter(
+            fn(asset) {
+              let (policy_id, _, _) = asset
+              policy_id == claim_entry.vesting_program
+            },
+          )
+        |> list.foldl(
+            value.zero(),
+            fn(asset, acc) {
+              let (policy_id, name, quantity) = asset
+              acc |> value.add(policy_id, name, quantity)
+            },
+          )
+
+    let vesting_output_value =
+      vesting_output_value |> value.merge(vesting_mints |> value.negate())
+
+    vesting_output_value == vesting_value
+  }
+}
+
 pub fn verify_vesting_mint(vesting_hash: ByteArray, mint: MintedValue) -> Bool {
   let minted_value = mint |> value.from_minted_value()
   let vesting_mints = minted_value |> value.tokens(vesting_hash)
   dict.size(vesting_mints) > 0
 }
 
-pub fn verify_claim_datum(
+pub fn verify_treasury_datum(
   input_datum: TreasuryDatum,
   output_datum: TreasuryDatum,
   updated_trie_hash: ByteArray,
@@ -107,7 +160,7 @@ pub fn verify_claim_datum(
   }
 }
 
-pub fn verify_claim_value(
+pub fn verify_treasury_value(
   claim_entry: ClaimEntry,
   input_value: Value,
   output_value: Value,

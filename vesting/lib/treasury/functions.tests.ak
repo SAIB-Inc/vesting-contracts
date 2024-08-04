@@ -72,6 +72,15 @@ test valid_claim() {
       reference_script: None,
     }
 
+  let vesting_utxo =
+    Output {
+      address: credential.from_script(claim_entry.vesting_program),
+      value: claim_entry.vesting_value
+        |> value.add(claim_entry.vesting_program, "", 1),
+      datum: InlineDatum(vesting_params),
+      reference_script: None,
+    }
+
   let minted_value =
     value.from_asset(#"00", #"1111", 1) |> value.to_minted_value()
 
@@ -80,7 +89,7 @@ test valid_claim() {
       |> fn(tx) {
           Transaction {
             ..tx,
-            outputs: [updated_utxo],
+            outputs: [updated_utxo, vesting_utxo],
             inputs: [spend_input],
             extra_signatories: [#"a4"],
             mint: minted_value,
