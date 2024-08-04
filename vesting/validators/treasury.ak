@@ -1,10 +1,10 @@
 use aiken/transaction.{ScriptContext, Spend}
-use treasury/functions.{claim}
+use treasury/functions.{claim, withdraw}
 use treasury/types.{AdminWithdraw, Claim, TreasuryDatum, TreasuryRedeemer}
 
 validator {
   fn treasury_spend(
-    _datum: TreasuryDatum,
+    datum: TreasuryDatum,
     redeemer: TreasuryRedeemer,
     context: ScriptContext,
   ) -> Bool {
@@ -13,7 +13,7 @@ validator {
         when redeemer is {
           Claim(claim_proof, claim_entry) ->
             claim(output_reference, claim_proof, claim_entry, context)
-          AdminWithdraw -> True
+          AdminWithdraw -> withdraw(datum, context)
         }
       _ -> False
     }

@@ -1,4 +1,5 @@
 use aiken/cbor
+use aiken/interval.{Finite, Interval, IntervalBound}
 use aiken/merkle_patricia_forestry.{Leaf, Proof} as mpf
 use aiken/transaction.{
   InlineDatum, Input, Output, OutputReference, ScriptContext, Spend, Transaction,
@@ -7,7 +8,7 @@ use aiken/transaction.{
 use aiken/transaction/credential
 use aiken/transaction/value
 use sundae/multisig.{Signature}
-use treasury/functions.{claim, verify_vesting_mint}
+use treasury/functions.{claim, verify_vesting_mint, withdraw}
 use treasury/types.{ClaimEntry, TreasuryDatum}
 
 test valid_claim() {
@@ -45,6 +46,7 @@ test valid_claim() {
     TreasuryDatum {
       owner: treasury_owner,
       treasury_root_hash: #"5bc8dea9d5aa66ed964186dbb7d26cbff832ee1c747db19c9001aecddcd21c6c",
+      unlock_time: 0,
     }
 
   let spend_input =
@@ -62,6 +64,7 @@ test valid_claim() {
     TreasuryDatum {
       owner: treasury_owner,
       treasury_root_hash: #"b9306bcd5cca5033b1e7a88aabf282eeec19dd9b0f2a27ef030c085de341fa9a",
+      unlock_time: 0,
     }
 
   let updated_utxo =
@@ -100,6 +103,174 @@ test valid_claim() {
     treasury_output_ref,
     claim_proof,
     claim_entry,
+    ScriptContext { purpose: Spend(treasury_output_ref), transaction: tx },
+  )
+}
+
+test admin_withdraw_no_lock() {
+  let treasury_output_ref =
+    OutputReference {
+      transaction_id: TransactionId { hash: #"00" },
+      output_index: 0,
+    }
+
+  let treasury_owner = Signature { key_hash: "owner" }
+
+  let datum =
+    TreasuryDatum {
+      owner: treasury_owner,
+      treasury_root_hash: #"5bc8dea9d5aa66ed964186dbb7d26cbff832ee1c747db19c9001aecddcd21c6c",
+      unlock_time: 0,
+    }
+
+  let spend_input =
+    Input {
+      output_reference: treasury_output_ref,
+      output: Output {
+        address: credential.from_script(#"0011"),
+        value: value.from_lovelace(10_000),
+        datum: InlineDatum(datum),
+        reference_script: None,
+      },
+    }
+
+  let withdraw_utxo = spend_input.output
+
+  let tx =
+    transaction.placeholder()
+      |> fn(tx) {
+          Transaction {
+            ..tx,
+            inputs: [spend_input],
+            outputs: [withdraw_utxo],
+            extra_signatories: ["owner"],
+            validity_range: Interval {
+              lower_bound: IntervalBound {
+                bound_type: Finite(1),
+                is_inclusive: True,
+              },
+              upper_bound: IntervalBound {
+                bound_type: Finite(10),
+                is_inclusive: True,
+              },
+            },
+          }
+        }
+
+  withdraw(
+    datum,
+    ScriptContext { purpose: Spend(treasury_output_ref), transaction: tx },
+  )
+}
+
+test admin_withdraw_lock() {
+  let treasury_output_ref =
+    OutputReference {
+      transaction_id: TransactionId { hash: #"00" },
+      output_index: 0,
+    }
+
+  let treasury_owner = Signature { key_hash: "owner" }
+
+  let datum =
+    TreasuryDatum {
+      owner: treasury_owner,
+      treasury_root_hash: #"5bc8dea9d5aa66ed964186dbb7d26cbff832ee1c747db19c9001aecddcd21c6c",
+      unlock_time: 10,
+    }
+
+  let spend_input =
+    Input {
+      output_reference: treasury_output_ref,
+      output: Output {
+        address: credential.from_script(#"0011"),
+        value: value.from_lovelace(10_000),
+        datum: InlineDatum(datum),
+        reference_script: None,
+      },
+    }
+
+  let withdraw_utxo = spend_input.output
+
+  let tx =
+    transaction.placeholder()
+      |> fn(tx) {
+          Transaction {
+            ..tx,
+            inputs: [spend_input],
+            outputs: [withdraw_utxo],
+            extra_signatories: ["owner"],
+            validity_range: Interval {
+              lower_bound: IntervalBound {
+                bound_type: Finite(10),
+                is_inclusive: True,
+              },
+              upper_bound: IntervalBound {
+                bound_type: Finite(11),
+                is_inclusive: True,
+              },
+            },
+          }
+        }
+
+  withdraw(
+    datum,
+    ScriptContext { purpose: Spend(treasury_output_ref), transaction: tx },
+  )
+}
+
+test admin_withdraw_fail() fail {
+  let treasury_output_ref =
+    OutputReference {
+      transaction_id: TransactionId { hash: #"00" },
+      output_index: 0,
+    }
+
+  let treasury_owner = Signature { key_hash: "owner" }
+
+  let datum =
+    TreasuryDatum {
+      owner: treasury_owner,
+      treasury_root_hash: #"5bc8dea9d5aa66ed964186dbb7d26cbff832ee1c747db19c9001aecddcd21c6c",
+      unlock_time: 10,
+    }
+
+  let spend_input =
+    Input {
+      output_reference: treasury_output_ref,
+      output: Output {
+        address: credential.from_script(#"0011"),
+        value: value.from_lovelace(10_000),
+        datum: InlineDatum(datum),
+        reference_script: None,
+      },
+    }
+
+  let withdraw_utxo = spend_input.output
+
+  let tx =
+    transaction.placeholder()
+      |> fn(tx) {
+          Transaction {
+            ..tx,
+            inputs: [spend_input],
+            outputs: [withdraw_utxo],
+            extra_signatories: ["owner"],
+            validity_range: Interval {
+              lower_bound: IntervalBound {
+                bound_type: Finite(1),
+                is_inclusive: True,
+              },
+              upper_bound: IntervalBound {
+                bound_type: Finite(10),
+                is_inclusive: True,
+              },
+            },
+          }
+        }
+
+  withdraw(
+    datum,
     ScriptContext { purpose: Spend(treasury_output_ref), transaction: tx },
   )
 }

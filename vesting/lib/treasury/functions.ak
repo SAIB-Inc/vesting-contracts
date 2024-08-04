@@ -1,5 +1,6 @@
 use aiken/cbor
 use aiken/dict
+use aiken/interval.{Finite}
 use aiken/list
 use aiken/merkle_patricia_forestry.{MerklePatriciaForestry, Proof} as mpf
 use aiken/transaction.{
@@ -79,6 +80,21 @@ pub fn claim(
       tx.extra_signatories,
       tx.validity_range,
       tx.withdrawals,
+    ),
+  }
+}
+
+pub fn withdraw(treasury_datum: TreasuryDatum, context: ScriptContext) {
+  expect Finite(current_time) =
+    context.transaction.validity_range.lower_bound.bound_type
+
+  and {
+    current_time >= treasury_datum.unlock_time,
+    satisfied(
+      treasury_datum.owner,
+      context.transaction.extra_signatories,
+      context.transaction.validity_range,
+      context.transaction.withdrawals,
     ),
   }
 }

@@ -1,5 +1,6 @@
 use aiken/hash.{Blake2b_224, Hash}
 use aiken/merkle_patricia_forestry.{Proof}
+use aiken/time.{PosixTime}
 use aiken/transaction/credential.{Script}
 use aiken/transaction/value.{Value}
 use sundae/multisig.{MultisigScript}
@@ -7,6 +8,7 @@ use sundae/multisig.{MultisigScript}
 pub type TreasuryDatum {
   owner: MultisigScript,
   treasury_root_hash: ByteArray,
+  unlock_time: PosixTime,
 }
 
 pub type TreasuryRedeemer {
