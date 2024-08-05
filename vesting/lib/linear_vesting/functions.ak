@@ -7,9 +7,9 @@ use aiken/list
 use aiken/transaction.{Datum, InlineDatum, Output, ScriptContext}
 use aiken/transaction/value.{AssetName, PolicyId, Value, merge}
 use linear_vesting/types.{LinearVestingParameters} as linear_vesting_types
-use utils/functions.{
-  find_script_inputs, get_unique_nft_identifier_from_bytes, get_validator_hash,
-}
+use utils/functions.{find_script_inputs,
+  get_validator_hash, ident_to_asset_name}
+use utils/types.{Reference} as utils_types
 
 pub fn claim(validator_hash: ByteArray, context: ScriptContext) {
   // Get all inputs being unlocked from the vesting script
@@ -137,7 +137,7 @@ pub fn calculate_returnable_values_by_params(
                   |> dict.get(serialise(correct_vesting_params))
 
               let unique_nft_name =
-                get_unique_nft_identifier_from_bytes(unique_nft_name)
+                ident_to_asset_name(unique_nft_name, Reference)
 
               let correct_returned_value_in_output =
                 correct_returned_value_in_output
@@ -162,6 +162,61 @@ pub fn calculate_returnable_values_by_params(
           },
         )
   final
+}
+
+pub fn mint(policy_id: PolicyId, context: ScriptContext) {
+  let tx_outputs = context.transaction.outputs
+  let tx_identifier = get_tx_unique_ident(context)
+
+  // Find all outputs sent to the vesting script
+  let script_outputs =
+    tx_outputs
+      |> transaction.find_script_outputs(policy_id)
+
+  // Put index on outputs
+  let outputs_with_index =
+    script_outputs
+      |> list.indexed_map(fn(index, output) { Pair(index, output) })
+
+  let outputs_with_params =
+    outputs_with_index
+      |> list.map(
+          fn(output_with_index) {
+            let Pair(index, output) = output_with_index
+            let linear_params = extract_vesting_datum(output.datum)
+            let position_ident = get_vest_position_ident(tx_identifier, index)
+            let position_nft_name =
+              ident_to_asset_name(position_ident, Reference)
+
+            let has_nft =
+              (
+                output.value
+                  |> value.quantity_of(policy_id, position_nft_name)
+              ) == 1
+
+            when has_nft is {
+              True -> Some((index, linear_params, position_nft_name, output))
+              False -> None
+            }
+          },
+        )
+
+  True
+}
+
+pub fn get_vest_position_ident(base_ident: ByteArray, index: Int) -> ByteArray {
+  blake2b_256(concat(base_ident, serialise(index)))
+}
+
+pub fn get_tx_unique_ident(context: ScriptContext) -> ByteArray {
+  let inputs = context.transaction.inputs
+  inputs
+    |> list.foldl(
+        #"",
+        fn(input, acc) {
+          blake2b_256(concat(acc, serialise(input.output_reference)))
+        },
+      )
 }
 
 pub fn calculate_returnable_params(

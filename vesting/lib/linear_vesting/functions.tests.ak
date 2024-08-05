@@ -10,7 +10,8 @@ use aiken/transaction/credential.{Address, Inline, ScriptCredential}
 use aiken/transaction/value.{add}
 use linear_vesting/functions.{claim} as linear_vesting_functions
 use linear_vesting/types.{LinearVestingParameters}
-use utils/functions.{get_unique_nft_identifier_from_bytes} as utils_functions
+use utils/functions.{ident_to_asset_name} as utils_functions
+use utils/types.{Reference} as utils_types
 
 test vesting_claim_zero_withdraw() {
   let valdiator_hash = #"0000"
@@ -124,25 +125,27 @@ test vesting_claim_zero_withdraw() {
     value.zero()
       |> add(
           valdiator_hash,
-          get_unique_nft_identifier_from_bytes(
+          ident_to_asset_name(
             blake2b_256(
               concat(
                 serialise(test_input1.output_reference),
                 serialise(test_input2.output_reference),
               ),
             ),
+            Reference,
           ),
           1,
         )
       |> add(
           valdiator_hash,
-          get_unique_nft_identifier_from_bytes(
+          ident_to_asset_name(
             blake2b_256(
               concat(
                 serialise(test_input3.output_reference),
                 serialise(test_input4.output_reference),
               ),
             ),
+            Reference,
           ),
           1,
         )
@@ -155,13 +158,14 @@ test vesting_claim_zero_withdraw() {
             value: output.value
               |> add(
                   valdiator_hash,
-                  get_unique_nft_identifier_from_bytes(
+                  ident_to_asset_name(
                     blake2b_256(
                       concat(
                         serialise(test_input1.output_reference),
                         serialise(test_input2.output_reference),
                       ),
                     ),
+                    Reference,
                   ),
                   1,
                 ),
@@ -176,13 +180,14 @@ test vesting_claim_zero_withdraw() {
             value: output.value
               |> add(
                   valdiator_hash,
-                  get_unique_nft_identifier_from_bytes(
+                  ident_to_asset_name(
                     blake2b_256(
                       concat(
                         serialise(test_input3.output_reference),
                         serialise(test_input4.output_reference),
                       ),
                     ),
+                    Reference,
                   ),
                   1,
                 ),

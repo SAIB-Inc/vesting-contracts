@@ -9,7 +9,7 @@ use aiken/transaction.{
 }
 use aiken/transaction/credential.{Inline, ScriptCredential}
 use aiken/transaction/value.{MintedValue, minted_to_dict}
-use utils/types.{reference_prefix, user_nft_prefix}
+use utils/types.{Identifier, Reference, User, reference_prefix, user_nft_prefix}
 
 pub fn get_validator_hash(context: ScriptContext) {
   when context.purpose is {
@@ -85,10 +85,16 @@ pub fn verify_cip68_pairs(
   }
 }
 
-pub fn get_unique_nft_identifier_from_bytes(identifier: ByteArray) -> ByteArray {
+pub fn ident_to_asset_name(identifier: ByteArray, t: Identifier) -> ByteArray {
+  let prefix =
+    when t is {
+      Reference -> reference_prefix
+      User -> user_nft_prefix
+    }
+
   let unique_nft_name =
     foldr(
-      [user_nft_prefix, bytearray.from_string(@"CNCT_VESTING_"), identifier],
+      [prefix, bytearray.from_string(@"CNCT_VESTING_"), identifier],
       #"",
       fn(a, b) { concat(a, b) },
     )
