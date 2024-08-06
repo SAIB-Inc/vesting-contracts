@@ -4,12 +4,12 @@ use aiken/dict.{Dict}
 use aiken/hash.{blake2b_256}
 use aiken/interval.{Finite}
 use aiken/list
-use aiken/transaction.{Datum, InlineDatum, Output, ScriptContext}
+use aiken/transaction.{Datum, InlineDatum, Input, Output, ScriptContext}
 use aiken/transaction/value.{AssetName, PolicyId, Value, merge}
 use linear_vesting/types.{LinearVestingParameters} as linear_vesting_types
 use utils/functions.{find_script_inputs,
   get_validator_hash, ident_to_asset_name}
-use utils/types.{Reference} as utils_types
+use utils/types.{LinearVestingPosition, ReferenceNft, UserNft} as utils_types
 
 pub fn claim(validator_hash: ByteArray, context: ScriptContext) {
   // Get all inputs being unlocked from the vesting script
@@ -22,8 +22,8 @@ pub fn claim(validator_hash: ByteArray, context: ScriptContext) {
       |> list.foldl(
           dict.new(),
           fn(input, acc) {
-            let vesting_params: LinearVestingParameters =
-              extract_vesting_datum(input.output.datum)
+            expect Some(vesting_params) =
+              try_extract_vesting_datum(input.output.datum)
             let returnable_vesting_params =
               vesting_params |> calculate_returnable_params(context)
             acc
@@ -63,10 +63,12 @@ pub fn claim(validator_hash: ByteArray, context: ScriptContext) {
   expected_output_values_by_params == total_outputs_values_by_params
 }
 
-pub fn extract_vesting_datum(on_chain_datum: Datum) -> LinearVestingParameters {
+pub fn try_extract_vesting_datum(
+  on_chain_datum: Datum,
+) -> Option<LinearVestingParameters> {
   expect InlineDatum(inline_datum) = on_chain_datum
-  expect casted_datum: LinearVestingParameters = inline_datum
-  casted_datum
+  expect cip68_position: LinearVestingPosition = inline_datum
+  Some(cip68_position.extra)
 }
 
 pub fn sum_values(values: List<Value>) -> Value {
@@ -137,7 +139,7 @@ pub fn calculate_returnable_values_by_params(
                   |> dict.get(serialise(correct_vesting_params))
 
               let unique_nft_name =
-                ident_to_asset_name(unique_nft_name, Reference)
+                ident_to_asset_name(unique_nft_name, ReferenceNft)
 
               let correct_returned_value_in_output =
                 correct_returned_value_in_output
@@ -165,8 +167,9 @@ pub fn calculate_returnable_values_by_params(
 }
 
 pub fn mint(policy_id: PolicyId, context: ScriptContext) {
+  let tx_inputs = context.transaction.inputs
   let tx_outputs = context.transaction.outputs
-  let tx_identifier = get_tx_unique_ident(context)
+  let tx_identifier = get_unique_ident_from_inputs(tx_inputs)
 
   // Find all outputs sent to the vesting script
   let script_outputs =
@@ -178,15 +181,18 @@ pub fn mint(policy_id: PolicyId, context: ScriptContext) {
     script_outputs
       |> list.indexed_map(fn(index, output) { Pair(index, output) })
 
-  let outputs_with_params =
+  let vesting_outputs =
     outputs_with_index
       |> list.map(
           fn(output_with_index) {
             let Pair(index, output) = output_with_index
-            let linear_params = extract_vesting_datum(output.datum)
+
+            // Just to make sure the datum is correct
+            expect Some(linear_params) = try_extract_vesting_datum(output.datum)
+
             let position_ident = get_vest_position_ident(tx_identifier, index)
             let position_nft_name =
-              ident_to_asset_name(position_ident, Reference)
+              ident_to_asset_name(position_ident, ReferenceNft)
 
             let has_nft =
               (
@@ -195,21 +201,65 @@ pub fn mint(policy_id: PolicyId, context: ScriptContext) {
               ) == 1
 
             when has_nft is {
-              True -> Some((index, linear_params, position_nft_name, output))
+              True -> Some((position_ident, linear_params))
               False -> None
             }
           },
         )
 
-  True
+  let vesting_outputs_count = vesting_outputs |> list.length()
+
+  let has_vesting_outputs = vesting_outputs_count > 0
+
+  let is_positions_correct =
+    vesting_outputs
+      |> list.all(
+          fn(elem) {
+            expect Some((position_ident, _)) = elem
+            outputs_contains_nft(
+              tx_outputs,
+              policy_id,
+              ident_to_asset_name(position_ident, UserNft),
+            )
+          },
+        )
+
+  let is_positions_minted =
+    (
+      context.transaction.mint
+        |> value.from_minted_value()
+        |> value.flatten()
+        |> list.length()
+    ) == vesting_outputs_count * 2
+
+  and {
+    has_vesting_outputs,
+    is_positions_correct,
+    is_positions_minted,
+  }
+}
+
+pub fn outputs_contains_nft(
+  outputs: List<Output>,
+  policy_id: PolicyId,
+  nft_name: AssetName,
+) -> Bool {
+  outputs
+    |> list.any(
+        fn(output) {
+          (
+            output.value
+              |> value.quantity_of(policy_id, nft_name)
+          ) == 1
+        },
+      )
 }
 
 pub fn get_vest_position_ident(base_ident: ByteArray, index: Int) -> ByteArray {
   blake2b_256(concat(base_ident, serialise(index)))
 }
 
-pub fn get_tx_unique_ident(context: ScriptContext) -> ByteArray {
-  let inputs = context.transaction.inputs
+pub fn get_unique_ident_from_inputs(inputs: List<Input>) -> ByteArray {
   inputs
     |> list.foldl(
         #"",
@@ -267,8 +317,7 @@ pub fn group_outputs_by_vesting_datum(
     |> list.foldl(
         dict.new(),
         fn(output, acc) {
-          expect InlineDatum(datum) = output.datum
-          expect linear_params: LinearVestingParameters = datum
+          expect Some(linear_params) = try_extract_vesting_datum(output.datum)
           let vesting_datum_bytes = serialise(linear_params)
           acc
             |> dict.insert_with(
