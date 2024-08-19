@@ -132,7 +132,12 @@ pub fn verify_vesting_value(
 ) -> Bool {
   let vesting_value = claim_entry.vesting_value
 
-  if vesting_value == value.zero() {
+  let is_no_claimable = and {
+      vesting_value == value.zero(),
+      vesting_output_value == value.zero(),
+    }
+
+  if is_no_claimable {
     True
   } else {
     let vesting_mints =
@@ -178,12 +183,12 @@ pub fn verify_treasury_datum(
 
 pub fn verify_treasury_value(
   claim_entry: ClaimEntry,
-  input_value: Value,
+  treasury_value: Value,
   output_value: Value,
 ) -> Bool {
   let claimed_value =
     claim_entry.vesting_value |> merge(claim_entry.direct_value) |> negate()
-  let expected_output_value = input_value |> merge(claimed_value)
+  let expected_output_value = treasury_value |> merge(claimed_value)
   expected_output_value == output_value
 }
 

@@ -11,7 +11,7 @@ use aiken/transaction/credential.{
 }
 use aiken/transaction/value.{add}
 use linear_vesting/functions.{
-  claim, get_unique_ident_from_inputs, get_vest_position_ident, mint,
+  claim, get_unique_ident_from_inputs, get_vest_position_ident, mint_and_burn,
 } as linear_vesting_functions
 use linear_vesting/types.{LinearVestingParameters}
 use utils/functions.{ident_to_asset_name} as utils_functions
@@ -464,5 +464,5 @@ test treasury_deposit_mint() {
             }
           },
     }
-  mint(validator_hash, context)
+  mint_and_burn(validator_hash, context)
 }

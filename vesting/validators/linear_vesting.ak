@@ -1,7 +1,7 @@
 use aiken/pairs
 use aiken/transaction.{Mint, ScriptContext, WithdrawFrom}
 use aiken/transaction/credential.{Inline, ScriptCredential}
-use linear_vesting/functions.{claim, mint}
+use linear_vesting/functions.{claim, mint_and_burn}
 use utils/functions.{get_validator_hash} as utils_functions
 
 validator {
@@ -21,7 +21,7 @@ validator {
 
   fn vesting_withdraw_or_mint(_redeemer: Data, context: ScriptContext) -> Bool {
     when context.purpose is {
-      Mint(policy_id) -> mint(policy_id, context)
+      Mint(policy_id) -> mint_and_burn(policy_id, context)
       WithdrawFrom(Inline(ScriptCredential(validator_hash))) ->
         claim(validator_hash, context)
       _ -> False
