@@ -1,6 +1,3 @@
-use aiken/bytearray.{concat}
-use aiken/cbor.{serialise}
-use aiken/hash.{blake2b_256}
 use aiken/interval.{Finite, Interval, IntervalBound}
 use aiken/transaction.{
   InlineDatum, Input, Mint, NoDatum, Output, OutputReference, ScriptContext,
@@ -115,6 +112,11 @@ test vesting_claim_zero_withdraw() {
       ),
     }
 
+  let inputs =
+    [test_input1, test_input2, test_input3, test_input4]
+
+  let ident = get_unique_ident_from_inputs(inputs)
+
   let test_returned_output1 =
     Output(
       Address { payment_credential: validator_creds, stake_credential: None },
@@ -161,28 +163,14 @@ test vesting_claim_zero_withdraw() {
     value.zero()
       |> add(
           valdiator_hash,
-          ident_to_asset_name(
-            blake2b_256(
-              concat(
-                serialise(test_input1.output_reference),
-                serialise(test_input2.output_reference),
-              ),
-            ),
-            ReferenceNft,
-          ),
+          get_vest_position_ident(ident, 0)
+            |> ident_to_asset_name(ReferenceNft),
           1,
         )
       |> add(
           valdiator_hash,
-          ident_to_asset_name(
-            blake2b_256(
-              concat(
-                serialise(test_input3.output_reference),
-                serialise(test_input4.output_reference),
-              ),
-            ),
-            ReferenceNft,
-          ),
+          get_vest_position_ident(ident, 1)
+            |> ident_to_asset_name(ReferenceNft),
           1,
         )
 
@@ -194,15 +182,8 @@ test vesting_claim_zero_withdraw() {
             value: output.value
               |> add(
                   valdiator_hash,
-                  ident_to_asset_name(
-                    blake2b_256(
-                      concat(
-                        serialise(test_input1.output_reference),
-                        serialise(test_input2.output_reference),
-                      ),
-                    ),
-                    ReferenceNft,
-                  ),
+                  get_vest_position_ident(ident, 0)
+                    |> ident_to_asset_name(ReferenceNft),
                   1,
                 ),
           }
@@ -216,15 +197,8 @@ test vesting_claim_zero_withdraw() {
             value: output.value
               |> add(
                   valdiator_hash,
-                  ident_to_asset_name(
-                    blake2b_256(
-                      concat(
-                        serialise(test_input3.output_reference),
-                        serialise(test_input4.output_reference),
-                      ),
-                    ),
-                    ReferenceNft,
-                  ),
+                  get_vest_position_ident(ident, 1)
+                    |> ident_to_asset_name(ReferenceNft),
                   1,
                 ),
           }
@@ -238,7 +212,7 @@ test vesting_claim_zero_withdraw() {
             Transaction {
               ..transaction,
               withdrawals: [Pair(Inline(validator_creds), 0)],
-              inputs: [test_input1, test_input2, test_input3, test_input4],
+              inputs: inputs,
               outputs: [test_returned_output1, test_returned_output2],
               mint: minted_value |> value.to_minted_value(),
               validity_range: Interval {
