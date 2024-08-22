@@ -1,4 +1,6 @@
+use aiken/bytearray
 use aiken/interval.{Finite, Interval, IntervalBound}
+use aiken/string
 use aiken/transaction.{
   InlineDatum, Input, Mint, NoDatum, Output, OutputReference, ScriptContext,
   Transaction, TransactionId, WithdrawFrom,
@@ -12,11 +14,14 @@ use linear_vesting/functions.{
 } as linear_vesting_functions
 use linear_vesting/types.{LinearVestingParameters}
 use utils/functions.{ident_to_asset_name} as utils_functions
-use utils/types.{LinearVestingPosition, ReferenceNft, UserNft} as utils_types
+use utils/types.{
+  LinearVestingPosition, ReferenceNft, UserNft, reference_prefix,
+  user_nft_prefix, vesting_nft_image, vesting_nft_prefix,
+} as utils_types
 
 test vesting_claim_zero_withdraw() {
-  let valdiator_hash = #"0000"
-  let validator_creds = ScriptCredential(valdiator_hash)
+  let validator_hash = #"0000"
+  let validator_creds = ScriptCredential(validator_hash)
   let input_datum1 =
     LinearVestingParameters {
       start_time: 6,
@@ -40,10 +45,26 @@ test vesting_claim_zero_withdraw() {
       },
       output: Output(
         Address { payment_credential: validator_creds, stake_credential: None },
-        value.from_lovelace(100_000_000),
+        value.from_lovelace(100_000_000)
+          |> value.add(
+              validator_hash,
+              reference_prefix |> bytearray.concat(#"1111"),
+              1,
+            ),
         InlineDatum(
           LinearVestingPosition {
-            metadata: [],
+            metadata: [
+              (
+                bytearray.from_string(@"name"),
+                bytearray.from_string(
+                  string.concat(vesting_nft_prefix, @"test1"),
+                ),
+              ),
+              (
+                bytearray.from_string(@"image"),
+                bytearray.from_string(vesting_nft_image),
+              ),
+            ],
             version: 1,
             extra: input_datum1,
           },
@@ -60,10 +81,26 @@ test vesting_claim_zero_withdraw() {
       },
       output: Output(
         Address { payment_credential: validator_creds, stake_credential: None },
-        value.from_lovelace(100_000_001),
+        value.from_lovelace(100_000_001)
+          |> value.add(
+              validator_hash,
+              reference_prefix |> bytearray.concat(#"2111"),
+              1,
+            ),
         InlineDatum(
           LinearVestingPosition {
-            metadata: [],
+            metadata: [
+              (
+                bytearray.from_string(@"name"),
+                bytearray.from_string(
+                  string.concat(vesting_nft_prefix, @"test2"),
+                ),
+              ),
+              (
+                bytearray.from_string(@"image"),
+                bytearray.from_string(vesting_nft_image),
+              ),
+            ],
             version: 1,
             extra: input_datum1,
           },
@@ -80,10 +117,26 @@ test vesting_claim_zero_withdraw() {
       },
       output: Output(
         Address { payment_credential: validator_creds, stake_credential: None },
-        value.from_lovelace(100_000_002),
+        value.from_lovelace(100_000_002)
+          |> value.add(
+              validator_hash,
+              reference_prefix |> bytearray.concat(#"3111"),
+              1,
+            ),
         InlineDatum(
           LinearVestingPosition {
-            metadata: [],
+            metadata: [
+              (
+                bytearray.from_string(@"name"),
+                bytearray.from_string(
+                  string.concat(vesting_nft_prefix, @"test3"),
+                ),
+              ),
+              (
+                bytearray.from_string(@"image"),
+                bytearray.from_string(vesting_nft_image),
+              ),
+            ],
             version: 1,
             extra: input_datum2,
           },
@@ -100,10 +153,26 @@ test vesting_claim_zero_withdraw() {
       },
       output: Output(
         Address { payment_credential: validator_creds, stake_credential: None },
-        value.from_lovelace(100_000_003),
+        value.from_lovelace(100_000_003)
+          |> value.add(
+              validator_hash,
+              reference_prefix |> bytearray.concat(#"4111"),
+              1,
+            ),
         InlineDatum(
           LinearVestingPosition {
-            metadata: [],
+            metadata: [
+              (
+                bytearray.from_string(@"name"),
+                bytearray.from_string(
+                  string.concat(vesting_nft_prefix, @"test4"),
+                ),
+              ),
+              (
+                bytearray.from_string(@"image"),
+                bytearray.from_string(vesting_nft_image),
+              ),
+            ],
             version: 1,
             extra: input_datum2,
           },
@@ -125,7 +194,16 @@ test vesting_claim_zero_withdraw() {
       ),
       InlineDatum(
         LinearVestingPosition {
-          metadata: [],
+          metadata: [
+            (
+              bytearray.from_string(@"name"),
+              bytearray.from_string(string.concat(vesting_nft_prefix, @"test1")),
+            ),
+            (
+              bytearray.from_string(@"image"),
+              bytearray.from_string(vesting_nft_image),
+            ),
+          ],
           version: 1,
           extra: LinearVestingParameters {
             start_time: 8,
@@ -146,7 +224,16 @@ test vesting_claim_zero_withdraw() {
       ),
       InlineDatum(
         LinearVestingPosition {
-          metadata: [],
+          metadata: [
+            (
+              bytearray.from_string(@"name"),
+              bytearray.from_string(string.concat(vesting_nft_prefix, @"test2")),
+            ),
+            (
+              bytearray.from_string(@"image"),
+              bytearray.from_string(vesting_nft_image),
+            ),
+          ],
           version: 1,
           extra: LinearVestingParameters {
             start_time: 8,
@@ -162,17 +249,37 @@ test vesting_claim_zero_withdraw() {
   let minted_value =
     value.zero()
       |> add(
-          valdiator_hash,
+          validator_hash,
           get_vest_position_ident(ident, 0)
             |> ident_to_asset_name(ReferenceNft),
           1,
         )
       |> add(
-          valdiator_hash,
+          validator_hash,
+          get_vest_position_ident(ident, 0)
+            |> ident_to_asset_name(UserNft),
+          1,
+        )
+      |> add(
+          validator_hash,
           get_vest_position_ident(ident, 1)
             |> ident_to_asset_name(ReferenceNft),
           1,
         )
+      |> add(
+          validator_hash,
+          get_vest_position_ident(ident, 1)
+            |> ident_to_asset_name(UserNft),
+          1,
+        )
+      |> add(validator_hash, reference_prefix |> bytearray.concat(#"1111"), -1)
+      |> add(validator_hash, user_nft_prefix |> bytearray.concat(#"1111"), -1)
+      |> add(validator_hash, reference_prefix |> bytearray.concat(#"2111"), -1)
+      |> add(validator_hash, user_nft_prefix |> bytearray.concat(#"2111"), -1)
+      |> add(validator_hash, reference_prefix |> bytearray.concat(#"3111"), -1)
+      |> add(validator_hash, user_nft_prefix |> bytearray.concat(#"3111"), -1)
+      |> add(validator_hash, reference_prefix |> bytearray.concat(#"4111"), -1)
+      |> add(validator_hash, user_nft_prefix |> bytearray.concat(#"4111"), -1)
 
   let test_returned_output1 =
     test_returned_output1
@@ -181,7 +288,7 @@ test vesting_claim_zero_withdraw() {
             ..output,
             value: output.value
               |> add(
-                  valdiator_hash,
+                  validator_hash,
                   get_vest_position_ident(ident, 0)
                     |> ident_to_asset_name(ReferenceNft),
                   1,
@@ -196,7 +303,7 @@ test vesting_claim_zero_withdraw() {
             ..output,
             value: output.value
               |> add(
-                  valdiator_hash,
+                  validator_hash,
                   get_vest_position_ident(ident, 1)
                     |> ident_to_asset_name(ReferenceNft),
                   1,
@@ -228,11 +335,12 @@ test vesting_claim_zero_withdraw() {
             }
           },
     }
-  claim(valdiator_hash, context)
+  claim(validator_hash, context)
 }
 
 test treasury_deposit_mint() {
   let validator_hash = #"0000"
+  let treasury_validator_hash = #"0001"
 
   let input1 =
     Input {
@@ -242,7 +350,7 @@ test treasury_deposit_mint() {
       },
       output: Output(
         Address {
-          payment_credential: ScriptCredential(validator_hash),
+          payment_credential: ScriptCredential(treasury_validator_hash),
           stake_credential: None,
         },
         value.from_lovelace(100_000_000),
@@ -266,7 +374,7 @@ test treasury_deposit_mint() {
       },
       output: Output(
         Address {
-          payment_credential: ScriptCredential(validator_hash),
+          payment_credential: ScriptCredential(treasury_validator_hash),
           stake_credential: None,
         },
         value.from_lovelace(100_000_000),
@@ -290,7 +398,7 @@ test treasury_deposit_mint() {
       },
       output: Output(
         Address {
-          payment_credential: ScriptCredential(validator_hash),
+          payment_credential: ScriptCredential(treasury_validator_hash),
           stake_credential: None,
         },
         value.from_lovelace(100_000_000),
@@ -325,7 +433,16 @@ test treasury_deposit_mint() {
           ),
       InlineDatum(
         LinearVestingPosition {
-          metadata: [],
+          metadata: [
+            (
+              bytearray.from_string(@"name"),
+              bytearray.from_string(string.concat(vesting_nft_prefix, @"test1")),
+            ),
+            (
+              bytearray.from_string(@"image"),
+              bytearray.from_string(vesting_nft_image),
+            ),
+          ],
           version: 1,
           extra: LinearVestingParameters {
             start_time: 6,
@@ -353,7 +470,16 @@ test treasury_deposit_mint() {
           ),
       InlineDatum(
         LinearVestingPosition {
-          metadata: [],
+          metadata: [
+            (
+              bytearray.from_string(@"name"),
+              bytearray.from_string(string.concat(vesting_nft_prefix, @"test2")),
+            ),
+            (
+              bytearray.from_string(@"image"),
+              bytearray.from_string(vesting_nft_image),
+            ),
+          ],
           version: 1,
           extra: LinearVestingParameters {
             start_time: 6,
@@ -369,7 +495,7 @@ test treasury_deposit_mint() {
   let output3 =
     Output(
       Address {
-        payment_credential: VerificationKeyCredential(#"0000"),
+        payment_credential: VerificationKeyCredential(#"000012"),
         stake_credential: None,
       },
       value.from_lovelace(300_000_000)
@@ -386,7 +512,7 @@ test treasury_deposit_mint() {
   let output4 =
     Output(
       Address {
-        payment_credential: VerificationKeyCredential(#"0000"),
+        payment_credential: VerificationKeyCredential(#"000012"),
         stake_credential: None,
       },
       value.from_lovelace(300_000_000)

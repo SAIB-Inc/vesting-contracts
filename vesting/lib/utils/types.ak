@@ -9,6 +9,9 @@ pub const user_nft_prefix = #"000de140"
 //Prefix of the vesting nft asset name
 pub const vesting_nft_prefix = @"CNCT_VESTING_"
 
+//Image of the vesting nft
+pub const vesting_nft_image = @"ipfs://aaaaaaa"
+
 pub type Identifier {
   ReferenceNft
   UserNft

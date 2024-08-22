@@ -1,14 +1,18 @@
 use aiken/bytearray.{concat}
-use aiken/cbor.{diagnostic, serialise}
+use aiken/cbor.{serialise}
 use aiken/dict.{Dict}
 use aiken/hash.{blake2b_256}
 use aiken/interval.{Finite}
 use aiken/list
+use aiken/string
 use aiken/transaction.{Datum, InlineDatum, Input, Output, ScriptContext}
 use aiken/transaction/value.{AssetName, PolicyId, Value, merge}
 use linear_vesting/types.{LinearVestingParameters} as linear_vesting_types
 use utils/functions.{find_script_inputs, ident_to_asset_name}
-use utils/types.{LinearVestingPosition, ReferenceNft} as utils_types
+use utils/types.{
+  LinearVestingPosition, ReferenceNft, reference_prefix, user_nft_prefix,
+  vesting_nft_image, vesting_nft_prefix,
+} as utils_types
 
 pub fn claim(validator_hash: ByteArray, context: ScriptContext) {
   // Get all inputs being unlocked from the vesting script
@@ -30,21 +34,12 @@ pub fn claim(validator_hash: ByteArray, context: ScriptContext) {
   let outputs_by_params = group_outputs_by_vesting_datum(script_outputs)
 
   let expected_output_values_by_params =
-    calculate_returnable_values_by_params(resolved_inputs_by_params, context)
-
-  trace @"Expected returnable values"
-  trace diagnostic(expected_output_values_by_params)
+    resolved_inputs_by_params
+      |> calculate_returnable_values_by_params(context, validator_hash)
 
   let total_outputs_values_by_params =
     outputs_by_params |> outputs_by_params_to_values_by_params(validator_hash)
 
-  trace @"Total output values"
-  trace diagnostic(total_outputs_values_by_params)
-
-  // Check Values and Datum is correct based on the vesting parameters
-  // @@@ TODO: this will not match the value of `expected_output_values_by_params` because it does not
-  // take into account the reference NFTs attached to the vesting output, should adjust the logic of
-  // `outputs_by_params_to_values_by_params()` to ignore reference NFTs
   let is_output_values_correct =
     expected_output_values_by_params == total_outputs_values_by_params
 
@@ -56,16 +51,44 @@ pub fn claim(validator_hash: ByteArray, context: ScriptContext) {
   }
 }
 
-// @TODO: Check name and image of NFT
-// both name and image are validator parameters
-// _dsadasdas
-// check metadata dictionary count must be 2
-pub fn try_extract_vesting_datum(
+pub fn try_extract_vesting_position(
   on_chain_datum: Datum,
-) -> Option<LinearVestingParameters> {
+) -> Option<LinearVestingPosition> {
   expect InlineDatum(inline_datum) = on_chain_datum
   expect cip68_position: LinearVestingPosition = inline_datum
-  Some(cip68_position.extra)
+
+  expect Some(name) =
+    cip68_position.metadata
+      |> list.find(
+          fn(m) {
+            let (k, _) = m
+            k == bytearray.from_string(@"name")
+          },
+        )
+  expect Some(image) =
+    cip68_position.metadata
+      |> list.find(
+          fn(m) {
+            let (k, _) = m
+            k == bytearray.from_string(@"image")
+          },
+        )
+
+  let (_, name_value) = name
+  let (_, image_value) = image
+
+  // Metadata must only include name and image
+  expect list.length(cip68_position.metadata) == 2
+
+  // Metadata name must be in correct format
+  let vesting_nft_prefix_bytearray = bytearray.from_string(vesting_nft_prefix)
+  expect
+    bytearray.take(name_value, bytearray.length(vesting_nft_prefix_bytearray)) == vesting_nft_prefix_bytearray
+
+  // Metadata image must be correct
+  expect image_value == bytearray.from_string(vesting_nft_image)
+
+  Some(cip68_position)
 }
 
 pub fn sum_values(values: List<Value>) -> Value {
@@ -73,19 +96,46 @@ pub fn sum_values(values: List<Value>) -> Value {
 }
 
 pub fn calculate_returnable_values_by_params(
-  outputs_by_params: Dict<
-    ByteArray,
-    Pair<LinearVestingParameters, List<Output>>,
-  >,
+  outputs_by_params: Dict<ByteArray, Pair<LinearVestingPosition, List<Output>>>,
   context: ScriptContext,
+  validator_hash: ByteArray,
 ) -> Dict<ByteArray, Value> {
   let returnable_params_and_values =
     outputs_by_params
       |> dict.map(
           fn(_k, v) {
-            let Pair(params, outputs) = v
+            let Pair(position, outputs) = v
+            let params = position.extra
             let total_value =
-              sum_values(outputs |> list.map(fn(output) { output.value }))
+              sum_values(
+                outputs
+                  |> list.map(
+                      fn(output) {
+                        output.value
+                          |> value.flatten()
+                          |> list.filter(
+                              fn(a) {
+                                let (policy_id, _, _) = a
+                                policy_id != validator_hash
+                              },
+                            )
+                          |> list.foldl(
+                              value.zero(),
+                              fn(val, acc) {
+                                let (policy_id, asset_name, quantity) = val
+                                acc
+                                  |> value.merge(
+                                      value.from_asset(
+                                        policy_id,
+                                        asset_name,
+                                        quantity,
+                                      ),
+                                    )
+                              },
+                            )
+                      },
+                    ),
+              )
 
             // Extract Parameters
             let periods_remaining = params.vest_periods
@@ -157,14 +207,13 @@ pub fn mint_and_burn(policy_id: PolicyId, context: ScriptContext) -> Bool {
   let tx_outputs = context.transaction.outputs
   let tx_identifier = get_unique_ident_from_inputs(tx_inputs)
 
-  // @@@@ Possible fail due to previously minted vesting NFTs being included as input
-  // @TODO: Either filter reference nfts that's owned by the validator
-  // or filter by only reference NFTs to ensure only inputs from validator are evaluated
+  // We only evaluate inputs coming from vesting program validator
   let resolved_script_inputs =
     context.transaction.inputs
       |> list.foldl([], fn(input, acc) { acc |> list.push(input.output) })
       |> transaction.find_script_outputs(policy_id)
 
+  // From the `resolved_script_inputs` we extract all reference NFTs to burn, if there's any
   let reference_nfts_to_burn =
     resolved_script_inputs
       |> list.flat_map(
@@ -181,6 +230,11 @@ pub fn mint_and_burn(policy_id: PolicyId, context: ScriptContext) -> Bool {
                 )
           },
         )
+
+  // Ensure that for every `resolved_script_inputs` there's a corresponding reference nft attached
+  // otherwise, it's an invalid claim potentially coming from a malformed datum
+  expect
+    (list.length(resolved_script_inputs) == list.length(reference_nfts_to_burn))?
 
   // Find all outputs sent to the vesting script
   let script_outputs =
@@ -199,7 +253,8 @@ pub fn mint_and_burn(policy_id: PolicyId, context: ScriptContext) -> Bool {
             let Pair(index, output) = output_with_index
 
             // Just to make sure the datum is correct
-            expect Some(linear_params) = try_extract_vesting_datum(output.datum)
+            expect Some(linear_params) =
+              try_extract_vesting_position(output.datum)
 
             let position_ident = get_vest_position_ident(tx_identifier, index)
             let position_nft_name =
@@ -240,26 +295,45 @@ pub fn mint_and_burn(policy_id: PolicyId, context: ScriptContext) -> Bool {
       |> value.from_minted_value()
       |> value.flatten()
 
+  // Check if mint count is accurate
   let is_positions_minted =
-    (
-      flattened_mint
-        |> list.length()
-    ) >= vesting_outputs_count
+    list.length(flattened_mint) - list.length(reference_nfts_to_burn) * 2 == vesting_outputs_count * 2
 
-  // @TODO: Ensure UserNfts are burned together with ref NFTs
-  // make sure there's a cip68 metadata
+  let reference_prefix_length = reference_prefix |> bytearray.length()
+
   let is_positions_burned =
     reference_nfts_to_burn
       |> list.all(
           fn(x) {
             let (x_policy_id, x_asset_name, x_amount) = x
-            flattened_mint
-              |> list.any(
-                  fn(y) {
-                    let (y_policy_id, y_asset_name, y_amount) = y
-                    x_policy_id == y_policy_id && x_asset_name == y_asset_name && -x_amount == y_amount
-                  },
-                )
+
+            // Get the equivalent UserNft of the ReferenceNft being burned
+            let user_nft_asset_name =
+              user_nft_prefix
+                |> bytearray.concat(
+                    x_asset_name
+                      |> bytearray.drop(reference_prefix_length),
+                  )
+
+            // Ensure both reference and user NFTs are burned
+            and {
+              // Ensure reference NFT is burned
+              flattened_mint
+                |> list.any(
+                    fn(y) {
+                      let (y_policy_id, y_asset_name, y_amount) = y
+                      x_policy_id == y_policy_id && x_asset_name == y_asset_name && -x_amount == y_amount
+                    },
+                  ),
+              // Ensure user NFT is burned
+              flattened_mint
+                |> list.any(
+                    fn(y) {
+                      let (y_policy_id, y_asset_name, y_amount) = y
+                      x_policy_id == y_policy_id && user_nft_asset_name == y_asset_name && -x_amount == y_amount
+                    },
+                  ),
+            }
           },
         )
 
@@ -325,11 +399,8 @@ pub fn calculate_returnable_params(
 }
 
 pub fn outputs_by_params_to_values_by_params(
-  outputs_by_params: Dict<
-    ByteArray,
-    Pair<LinearVestingParameters, List<Output>>,
-  >,
-  vesting_program: ByteArray,
+  outputs_by_params: Dict<ByteArray, Pair<LinearVestingPosition, List<Output>>>,
+  validator_hash: ByteArray,
 ) -> Dict<ByteArray, Value> {
   outputs_by_params
     |> dict.map(
@@ -344,7 +415,7 @@ pub fn outputs_by_params_to_values_by_params(
                       |> list.filter(
                           fn(a) {
                             let (policy_id, _, _) = a
-                            policy_id != vesting_program
+                            policy_id != validator_hash
                           },
                         )
                       |> list.foldl(
@@ -368,20 +439,19 @@ pub fn outputs_by_params_to_values_by_params(
       )
 }
 
-// @TODO: need to change LinearVestingParameters to LinearVestingPosition
 pub fn group_outputs_by_vesting_datum(
   validator_outputs: List<Output>,
-) -> Dict<ByteArray, Pair<LinearVestingParameters, List<Output>>> {
+) -> Dict<ByteArray, Pair<LinearVestingPosition, List<Output>>> {
   validator_outputs
     |> list.foldl(
         dict.new(),
         fn(output, acc) {
-          expect Some(linear_params) = try_extract_vesting_datum(output.datum)
-          let vesting_datum_bytes = serialise(linear_params)
+          expect Some(position) = try_extract_vesting_position(output.datum)
+          let vesting_datum_bytes = serialise(position.extra)
           acc
             |> dict.insert_with(
                 vesting_datum_bytes,
-                Pair(linear_params, [output]),
+                Pair(position, [output]),
                 fn(_k, a, b) {
                   let Pair(params_a, outputs_a) = a
                   let Pair(_, outputs_b) = b
