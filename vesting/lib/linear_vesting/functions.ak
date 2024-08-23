@@ -4,7 +4,6 @@ use aiken/dict.{Dict}
 use aiken/hash.{blake2b_256}
 use aiken/interval.{Finite}
 use aiken/list
-use aiken/string
 use aiken/transaction.{Datum, InlineDatum, Input, Output, ScriptContext}
 use aiken/transaction/value.{AssetName, PolicyId, Value, merge}
 use linear_vesting/types.{LinearVestingParameters} as linear_vesting_types
