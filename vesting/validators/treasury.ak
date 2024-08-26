@@ -5,12 +5,13 @@ use treasury/types.{AdminWithdraw, Claim, TreasuryDatum, TreasuryRedeemer}
 validator {
   fn treasury_spend(
     datum: TreasuryDatum,
-    redeemer: TreasuryRedeemer,
+    redeemer: Data,
     context: ScriptContext,
   ) -> Bool {
+    expect typed_redeemer: TreasuryRedeemer = redeemer
     when context.purpose is {
       Spend(output_reference) ->
-        when redeemer is {
+        when typed_redeemer is {
           Claim(claim_proof, claim_entry) ->
             claim(output_reference, claim_proof, claim_entry, context)
           AdminWithdraw -> withdraw(datum, context)
