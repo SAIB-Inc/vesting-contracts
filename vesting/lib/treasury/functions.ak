@@ -62,25 +62,25 @@ pub fn claim(
     }
 
   and {
-    treasury_input.address == treasury_output.address,
-    verify_vesting_value(claim_entry, vesting_output_value),
+    (treasury_input.address == treasury_output.address)?,
+    verify_vesting_value(claim_entry, vesting_output_value)?,
     verify_treasury_value(
       claim_entry,
       treasury_input.value,
       treasury_output.value,
-    ),
+    )?,
     verify_treasury_datum(
       updated_treasury_datum,
       spent_treasury_datum,
       updated_root_hash,
-    ),
-    is_minting_valid,
+    )?,
+    is_minting_valid?,
     satisfied(
       claim_entry.claimant,
       tx.extra_signatories,
       tx.validity_range,
       tx.withdrawals,
-    ),
+    )?,
   }
 }
 

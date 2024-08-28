@@ -27,6 +27,7 @@ test valid_claim() {
       },
     ]
 
+  let vesting_validator_hash = #"00"
   let vesting_params = 1
 
   let sig1 = Signature { key_hash: #"a4" }
@@ -37,7 +38,7 @@ test valid_claim() {
       vesting_value: value.from_lovelace(100),
       direct_value: value.from_lovelace(100),
       vesting_parameters: cbor.serialise(vesting_params),
-      vesting_program: #"00",
+      vesting_program: vesting_validator_hash,
     }
 
   let treasury_owner = Signature { key_hash: "owner" }
@@ -85,7 +86,8 @@ test valid_claim() {
     }
 
   let minted_value =
-    value.from_asset(#"00", #"1111", 1) |> value.to_minted_value()
+    value.from_asset(vesting_validator_hash, #"1111", 1)
+      |> value.to_minted_value()
 
   let tx =
     transaction.placeholder()
