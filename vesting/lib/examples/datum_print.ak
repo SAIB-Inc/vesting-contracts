@@ -13,7 +13,7 @@ test print_example_datums() {
   let claim_entry_1 =
     ClaimEntry {
       claimant: Signature {
-        key_hash: #"eca3dfbde8ccb8408cefacda690e34aa9353af93fc02e75d8ba42f1b",
+        key_hash: #"aeeca6f0668d3542b099fa5524bb517ee96bdd25a750fc65377f51d4",
       },
       vesting_value: value.from_lovelace(0),
       direct_value: value.from_lovelace(100000000),
@@ -48,7 +48,7 @@ test print_example_datums() {
   let treasury_datum =
     TreasuryDatum {
       owner: Signature {
-        key_hash: #"eca3dfbde8ccb8408cefacda690e34aa9353af93fc02e75d8ba42f1b",
+        key_hash: #"aeeca6f0668d3542b099fa5524bb517ee96bdd25a750fc65377f51d4",
       },
       treasury_root_hash: #"2325f3c999b17d4a6399bf6c02e1ff7615c13a73ecafae7fe813b9757f27ef26",
       unlock_time: 0,
@@ -85,6 +85,10 @@ test print_example_datums() {
 
   trace @"treasury_direct_claim_entry_1_redeemer"
   trace bytearray.to_hex(cbor.serialise(treasury_direct_claim_entry_1_redeemer))
+
+  let sig = Signature { key_hash: #"00" }
+  trace @"Signature"
+  trace bytearray.to_hex(cbor.serialise(sig))
 
   True
 }
